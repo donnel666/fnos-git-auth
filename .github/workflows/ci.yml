@@ -66,6 +66,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: 安装系统依赖
+        run: sudo apt-get update && sudo apt-get install -y binutils
+      
       - name: 安装 uv
         uses: astral-sh/setup-uv@v4
         with:
