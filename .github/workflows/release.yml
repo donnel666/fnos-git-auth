@@ -1,0 +1,144 @@
+name: 构建发布
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送 v 开头的 tag 时触发
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.artifact_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            artifact_name: fnos-git-auth-linux-x86_64
+            arch: x64
+          # Linux ARM64 (使用 QEMU 模拟)
+          - os: ubuntu-latest
+            artifact_name: fnos-git-auth-linux-arm64
+            arch: arm64
+            qemu: true
+          # Windows x64
+          - os: windows-latest
+            artifact_name: fnos-git-auth-windows-x64.exe
+            arch: x64
+          # Windows ARM64: PyInstaller 暂不支持，待未来版本添加
+          # - os: windows-latest
+          #   artifact_name: fnos-git-auth-windows-arm64.exe
+          #   arch: arm64
+          # macOS x64 (Intel)
+          - os: macos-13
+            artifact_name: fnos-git-auth-macos-x64
+            arch: x64
+          # macOS ARM64 (Apple Silicon)
+          - os: macos-14
+            artifact_name: fnos-git-auth-macos-arm64
+            arch: arm64
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # Linux ARM64: 使用 QEMU 模拟
+      - name: 设置 QEMU (Linux ARM64)
+        if: matrix.qemu
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: 安装 Python
+        run: uv python install 3.12
+
+      - name: 安装依赖
+        run: uv sync --all-extras --dev
+
+      # 标准构建 (非交叉编译)
+      - name: 构建可执行文件
+        if: ${{ !matrix.cross && !matrix.qemu }}
+        shell: bash
+        run: |
+          uv run pyinstaller --onefile --clean --noconfirm \
+            --name=${{ matrix.artifact_name }} \
+            --hidden-import=websockets \
+            --hidden-import=click \
+            --hidden-import=Crypto \
+            --hidden-import=Crypto.Cipher \
+            --hidden-import=Crypto.PublicKey \
+            --hidden-import=Crypto.Hash \
+            main.py
+
+      # Linux ARM64: 使用 Docker 构建
+      - name: 构建 Linux ARM64
+        if: matrix.qemu
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            python:3.12-slim \
+            bash -c "
+              pip install uv &&
+              uv sync --all-extras --dev &&
+              uv run pyinstaller --onefile --clean --noconfirm \
+                --name=${{ matrix.artifact_name }} \
+                --hidden-import=websockets \
+                --hidden-import=click \
+                --hidden-import=Crypto \
+                --hidden-import=Crypto.Cipher \
+                --hidden-import=Crypto.PublicKey \
+                --hidden-import=Crypto.Hash \
+                main.py
+            "
+
+      # Windows ARM64: 使用 Nuitka 交叉编译（PyInstaller 不支持）
+      - name: 构建 Windows ARM64 (跳过，暂不支持)
+        if: matrix.cross
+        shell: bash
+        run: |
+          echo "Windows ARM64 暂不支持，跳过构建"
+          echo "PyInstaller 不支持 Windows ARM64 交叉编译"
+          mkdir -p dist
+          echo "Windows ARM64 暂不支持" > dist/${{ matrix.artifact_name }}.txt
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.artifact_name }}*
+          if-no-files-found: warn
+
+  release:
+    name: 创建发布
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 显示产物
+        run: |
+          ls -la artifacts/
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
