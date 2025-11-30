@@ -33,7 +33,7 @@ jobs:
         run: uv run pytest tests/test_config.py tests/test_crypto.py -v --tb=short
       
       - name: 检查代码语法
-        run: uv run python -m py_compile src/*.py
+        run: uv run python -c "import py_compile, glob; [py_compile.compile(f, doraise=True) for f in glob.glob('src/*.py')]"
 
   lint:
     runs-on: ubuntu-latest
