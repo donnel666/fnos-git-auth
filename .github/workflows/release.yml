@@ -17,11 +17,11 @@ jobs:
           - os: ubuntu-latest
             artifact_name: fnos-git-auth-linux-x86_64
             arch: x64
-          # Linux ARM64 (使用 QEMU 模拟)
-          - os: ubuntu-latest
-            artifact_name: fnos-git-auth-linux-arm64
-            arch: arm64
-            qemu: true
+          # Linux ARM64: 暂不支持，QEMU + Docker 环境配置复杂
+          # - os: ubuntu-latest
+          #   artifact_name: fnos-git-auth-linux-arm64
+          #   arch: arm64
+          #   qemu: true
           # Windows x64
           - os: windows-latest
             artifact_name: fnos-git-auth-windows-x64.exe
@@ -43,12 +43,12 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # Linux ARM64: 使用 QEMU 模拟
-      - name: 设置 QEMU (Linux ARM64)
-        if: matrix.qemu
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+      # Linux ARM64: 暂不支持
+      # - name: 设置 QEMU (Linux ARM64)
+      #   if: matrix.qemu
+      #   uses: docker/setup-qemu-action@v3
+      #   with:
+      #     platforms: arm64
 
       - name: 安装 uv
         uses: astral-sh/setup-uv@v4
@@ -76,27 +76,27 @@ jobs:
             --hidden-import=Crypto.Hash \
             main.py
 
-      # Linux ARM64: 使用 Docker 构建
-      - name: 构建 Linux ARM64
-        if: matrix.qemu
-        run: |
-          docker run --rm --platform linux/arm64 \
-            -v ${{ github.workspace }}:/app \
-            -w /app \
-            python:3.12-slim \
-            bash -c "
-              pip install uv &&
-              uv sync --all-extras --dev &&
-              uv run pyinstaller --onefile --clean --noconfirm \
-                --name=${{ matrix.artifact_name }} \
-                --hidden-import=websockets \
-                --hidden-import=click \
-                --hidden-import=Crypto \
-                --hidden-import=Crypto.Cipher \
-                --hidden-import=Crypto.PublicKey \
-                --hidden-import=Crypto.Hash \
-                main.py
-            "
+      # Linux ARM64: 暂不支持
+      # - name: 构建 Linux ARM64
+      #   if: matrix.qemu
+      #   run: |
+      #     docker run --rm --platform linux/arm64 \
+      #       -v ${{ github.workspace }}:/app \
+      #       -w /app \
+      #       python:3.12-slim \
+      #       bash -c "
+      #         pip install uv &&
+      #         uv sync --all-extras --dev &&
+      #         uv run pyinstaller --onefile --clean --noconfirm \
+      #           --name=${{ matrix.artifact_name }} \
+      #           --hidden-import=websockets \
+      #           --hidden-import=click \
+      #           --hidden-import=Crypto \
+      #           --hidden-import=Crypto.Cipher \
+      #           --hidden-import=Crypto.PublicKey \
+      #           --hidden-import=Crypto.Hash \
+      #           main.py
+      #       "
 
       # Windows ARM64: 使用 Nuitka 交叉编译（PyInstaller 不支持）
       - name: 构建 Windows ARM64 (跳过，暂不支持)
